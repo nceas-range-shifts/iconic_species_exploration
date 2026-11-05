@@ -862,4 +862,296 @@ direction = 1,
         plot.margin = margin(l = 5)) 
 ```
 
+## Northeast (Gulf of Maine)
 
+```{r}
+# Reaad in iconic species data
+ne_ico <- read_csv(here("data/iconic_species_ne_list.csv"))
+```
+
+```{r}
+ne_ico_clean <- ne_ico %>% 
+  # Adjust scientific name of Atlantic Sturgeon to match iucn_lookup
+  mutate(scientific = ifelse(scientific == "Acipenser oxyrhynchus oxyrhynchus", "Acipenser oxyrinchus", scientific))
+```
+
+
+```{r}
+# Get list of northeast iconic species 
+ne_ico_spp_list <- tolower(unique(ne_ico_clean$scientific))
+```
+
+```{r}
+# Filter iucn lookup for iconic species
+# No invertabrates
+# No bay scallop Argopecten irradians 156817
+# No blue crab Callinectes sapidus 107379
+# No american oyster Crossostrea virginia
+# No Northern quahog Mecenaria mercenaria
+# No soft shell clam Mya arenaria
+# No atlantic surfclam Spissula solidissima
+ne_ico_lookup <- iucn_lookup %>% filter(iucn_sciname %in% ne_ico_spp_list)
+```
+
+```{r}
+ne_ico_lookup_aquax <- ne_ico_lookup %>% 
+  filter(aquax == "SDM")
+
+ne_aquax_aphiaid <- ne_ico_lookup_aquax$aphia_id
+
+# Add the two missing species from above (weren't in iucn lookup)
+ne_aquax_aphiaid <- c(ne_aquax_aphiaid, 156817, 107379)
+```
+
+```{r}
+# Filter df for NE iconic species
+df_ne <- df  %>% 
+  filter(aphiaid %in% ne_aquax_aphiaid)
+```
+
+## Read in NE OHI regions
+
+```{r}
+ne_region <- read_sf(here("data/ne_rgn/ne_ohi_rgns.dbf"))
+```
+
+```{r}
+# set crs to WGS84
+ne_region_wgs84 <- ne_region %>% 
+  st_transform(crs = 4326)
+```
+
+## Find species change
+ 
+```{r}
+system.time({
+  ne_spp_exit_pxl_count_df <- parallel::mclapply(ne_aquax_aphiaid, FUN = extract_all_exit_pixels_df_db, 
+                                       df = df_ne, 
+                                       s = "RCP45_2050",
+                                       mc.cores = 2)
+})
+```
+
+```{r}
+ne_exit_rcp45_df <- bind_rows(ne_spp_exit_pxl_count_df) %>% 
+  filter(exit == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse
+system.time({
+ne_exit_rcp45_sum_df <- ne_exit_rcp45_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount() %>% 
+  mutate(scenario = "RCP45_2050") %>% 
+  rename(n_exit_pxls = N)
+})
+```
+
+```{r}
+ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_tile(data = ne_exit_rcp45_sum_df, aes(x = x, y = y, fill = n_exit_pxls)) +
+  scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "rocket",
+direction = 1,
+                      limits = c(1, 20),
+                      trans = "sqrt",
+                      breaks = c(1, 5, 10, 20),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = ne_region_wgs84, fill = NA, color = "gray") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Northeast (Gulf of Maine)",
+       fill = "loss species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+
+```{r}
+system.time({
+  ne_spp_entry_pxl_count_df <- parallel::mclapply(ne_aquax_aphiaid, FUN = extract_all_entry_pixels_df_db, 
+                                       df = df_ne, 
+                                       s = "RCP45_2050",
+                                       mc.cores = 2)
+})
+```
+
+```{r}
+ne_entry_rcp45_df <- bind_rows(ne_spp_entry_pxl_count_df) %>% 
+  filter(entry == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse
+system.time({
+ne_entry_rcp45_sum_df <- ne_entry_rcp45_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount() %>% 
+  mutate(scenario = "RCP45_2050") %>% 
+  rename(n_entry_pxls = N)
+})
+```
+
+```{r}
+ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_tile(data = ne_entry_rcp45_sum_df, aes(x = x, y = y, fill = n_entry_pxls)) +
+  scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "mako",
+direction = 1,
+                      limits = c(1, 20),
+                      trans = "sqrt",
+                      breaks = c(1, 5, 10, 20),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = ne_region_wgs84, fill = NA, color = "gray") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Northeast (Gulf of Maine)",
+       fill = "new species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+```{r}
+# Run NE current species (don't need parallel)
+system.time({
+  ne_iconic_current_list <- lapply(ne_aquax_aphiaid, 
+                                       FUN = species_count, 
+                                       df = df_ne, 
+                                       s = "Current",
+                                       n_threads = 1)
+})
+```
+
+```{r}
+ne_iconic_current_df <- bind_rows(ne_iconic_current_list) %>% 
+  # drop binary = 0 (no pixels above threshold)
+  filter(binary == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse (4 seconds)
+system.time({
+ne_iconic_current_sum_df <- ne_iconic_current_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount()
+})
+```
+
+```{r}
+ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_tile(data = ne_iconic_current_sum_df, aes(x = x, y = y, fill = N)) +
+  scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "mako",
+direction = 1,
+                      limits = c(1, 20),
+                      trans = "sqrt",
+                      breaks = c(1, 5, 10, 20),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = ne_region_wgs84, fill = NA, color = "gray") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Northeast (Gulf of Maine)",
+       fill = "iconic species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+
+```{r}
+# Run NE current species (don't need parallel)
+system.time({
+  ne_iconic_rcp45_list <- lapply(ne_aquax_aphiaid, 
+                                       FUN = species_count, 
+                                       df = df_ne, 
+                                       s = "RCP45_2050",
+                                       n_threads = 1)
+})
+```
+
+```{r}
+ne_iconic_rcp45_df <- bind_rows(ne_iconic_rcp45_list) %>% 
+  # drop binary = 0 (no pixels above threshold)
+  filter(binary == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse (4 seconds)
+system.time({
+ne_iconic_rcp45_sum_df <- ne_iconic_rcp45_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount()
+})
+```
+
+```{r}
+ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_tile(data = ne_iconic_rcp45_sum_df, aes(x = x, y = y, fill = N)) +
+  scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "mako",
+direction = 1,
+                      limits = c(1, 20),
+                      trans = "sqrt",
+                      breaks = c(1, 5, 10, 20),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = ne_region_wgs84, fill = NA, color = "gray") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Northeast (Gulf of Maine) - 2100",
+       fill = "iconic species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
