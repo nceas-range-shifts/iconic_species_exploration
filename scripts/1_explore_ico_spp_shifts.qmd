@@ -1155,3 +1155,57 @@ direction = 1,
   theme(legend.position = "bottom",
         plot.margin = margin(l = 5)) 
 ```
+
+## Gulf of California
+
+```{r}
+# Read in species 
+goc_ico <- read_csv(here("data/ico_spp_goc_sept26.csv"))
+
+```
+```{r}
+# Drop mobula species line since the five species in Mexico will be added by aphiaid later
+goc_ico_clean <- goc_ico %>% 
+  filter(sci_name != "Mobula spp.") %>% 
+  # drop hammerhead species (seems like scalloped and smooth are found in GOC)
+  filter(sci_name != "Sphyrna spp.") %>% 
+  #drop plants
+  filter(general_group != "flora")
+```
+
+```{r}
+# Get list of northeast iconic species 
+goc_ico_spp_list <- tolower(unique(goc_ico_clean$sci_name))
+```
+
+```{r}
+# Filter iucn lookup for iconic species
+# no Chelonia agassizi (regional subspecies of Chelonia mydas)
+# no Delphinus capensis (regional subspecies of Delphius delphis)
+# no Heermann's Gull Larus heermani
+# no Thalasseus elegans elenant tern
+# no osprey
+# no Penaeus stylirostris (blue shrimp)
+# no Megapitaria squalida 714777 chocolate clam
+# no Pinctada mazatlanica 464493
+# no Pinna rugosa 507084
+# no Pteria sterna 464505
+goc_ico_lookup <- iucn_lookup %>% filter(iucn_sciname %in% goc_ico_spp_list)
+```
+
+```{r}
+ne_ico_lookup_aquax <- ne_ico_lookup %>% 
+  filter(aquax == "SDM")
+
+ne_aquax_aphiaid <- ne_ico_lookup_aquax$aphia_id
+
+# Add the two missing species from above (weren't in iucn lookup)
+ne_aquax_aphiaid <- c(ne_aquax_aphiaid, 156817, 107379)
+```
+
+```{r}
+# Filter df for NE iconic species
+df_ne <- df  %>% 
+  filter(aphiaid %in% ne_aquax_aphiaid)
+```
+
