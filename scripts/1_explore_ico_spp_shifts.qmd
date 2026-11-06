@@ -34,6 +34,35 @@ iucn_new_cat <- read_csv("https://raw.githubusercontent.com/nceas-range-shifts/c
 source(here( "common_fxns.R"))
 ```
 
+```{r}
+library(rnaturalearth)
+globe <- ne_countries(scale = "large", returnclass = "sf")
+```
+
+## Prep AquaX data
+
+```{r}
+# read in meta data on the aquax species
+load("/home/shares/data-aquax/META_02122025.Rdata")
+```
+
+```{r}
+meta_clean <- META %>% 
+  mutate(worms_name = tolower(ScientificName)) %>% 
+  select(!ScientificName) %>% 
+  # simplify for now for easier viewing
+  select(AphiaID, SPID, worms_name, GROUP, NR_CR, range_pixels, SDM)
+```
+
+```{r}
+spp_fs <- list.files('/home/shares/data-aquax/SDM',
+                     full.names = TRUE)
+
+df <- data.frame(f = spp_fs) %>%
+    mutate(fsize = file.size(f),
+           aphiaid = str_extract(basename(f), '[0-9]+') %>% as.integer()) %>%
+    left_join(META, by = c('aphiaid' = 'AphiaID'))
+```
 
 ## Read in iconic species
 Starting with the Baltic Sea and British Columbia
@@ -63,32 +92,6 @@ bhi_ico_lookup_aquax <- bhi_ico_lookup %>%
   filter(aquax == "SDM")
 
 bhi_aquax_aphiaid <- bhi_ico_lookup_aquax$aphia_id
-```
-
-
-## Prep AquaX data
-
-```{r}
-# read in meta data on the aquax species
-load("/home/shares/data-aquax/META_02122025.Rdata")
-```
-
-```{r}
-meta_clean <- META %>% 
-  mutate(worms_name = tolower(ScientificName)) %>% 
-  select(!ScientificName) %>% 
-  # simplify for now for easier viewing
-  select(AphiaID, SPID, worms_name, GROUP, NR_CR, range_pixels, SDM)
-```
-
-```{r}
-spp_fs <- list.files('/home/shares/data-aquax/SDM',
-                     full.names = TRUE)
-
-df <- data.frame(f = spp_fs) %>%
-    mutate(fsize = file.size(f),
-           aphiaid = str_extract(basename(f), '[0-9]+') %>% as.integer()) %>%
-    left_join(META, by = c('aphiaid' = 'AphiaID'))
 ```
 
 ```{r}
@@ -127,7 +130,7 @@ bhi_exit_rcp45_sum_df <- bhi_exit_rcp45_df %>%
 ```
 
 ```{r}
-ggplot() +
+baltic_exit <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
   geom_tile(data = bhi_exit_rcp45_sum_df, aes(x = x, y = y, fill = n_exit_pxls)) +
@@ -183,13 +186,9 @@ bhi_entry_rcp45_sum_df <- bhi_entry_rcp45_df %>%
 })
 ```
 
-```{r}
-library(rnaturalearth)
-globe <- ne_countries(scale = "large", returnclass = "sf")
-```
 
 ```{r}
-ggplot() +
+baltic_entry <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
   geom_tile(data = bhi_entry_rcp45_sum_df, aes(x = x, y = y, fill = n_entry_pxls)) +
@@ -243,11 +242,6 @@ bhi_entry_rcp45_2100_sum_df <- bhi_entry_rcp45_2100_df %>%
   mutate(scenario = "RCP45_2100") %>% 
   rename(n_entry_pxls = N)
 })
-```
-
-```{r}
-library(rnaturalearth)
-globe <- ne_countries(scale = "large", returnclass = "sf")
 ```
 
 ```{r}
@@ -365,7 +359,7 @@ baltic_iconic_current_sum_df <- baltic_iconic_current_df %>%
 ```
 
 ```{r}
-ggplot() +
+baltic_current <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
   geom_tile(data = baltic_iconic_current_sum_df, aes(x = x, y = y, fill = N)) +
@@ -386,7 +380,7 @@ direction = 1,
   #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
   #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
   geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
-  labs(title = "Baltic Sea",
+  labs(title = "Baltic Sea - current",
        fill = "iconic species count", 
        x = "",
        y = "") +
@@ -394,19 +388,20 @@ direction = 1,
   theme(legend.position = "bottom",
         plot.margin = margin(l = 5)) 
 ```
+
 ```{r}
 # Run Baltic Sea current species (don't need parallel)
 system.time({
-  baltic_iconic_2100_list <- lapply(bhi_aquax_aphiaid, 
+  baltic_iconic_2050_list <- lapply(bhi_aquax_aphiaid, 
                                        FUN = species_count, 
                                        df = df_bhi, 
-                                       s = "RCP45_2100",
+                                       s = "RCP45_2050",
                                        n_threads = 1)
 })
 ```
 
 ```{r}
-baltic_iconic_2100_df <- bind_rows(baltic_iconic_2100_list) %>% 
+baltic_iconic_2050_df <- bind_rows(baltic_iconic_2050_list) %>% 
   # drop binary = 0 (no pixels above threshold)
   filter(binary == 1)
 ```
@@ -414,17 +409,17 @@ baltic_iconic_2100_df <- bind_rows(baltic_iconic_2100_list) %>%
 ```{r}
 # Sum by XY cell, using collapse (4 seconds)
 system.time({
-baltic_iconic_2100_sum_df <- baltic_iconic_2100_df %>% 
+baltic_iconic_2050_sum_df <- baltic_iconic_2050_df %>% 
   fgroup_by(x, y) %>% 
   fcount()
 })
 ```
 
 ```{r}
-ggplot() +
+baltic_2050 <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_tile(data = baltic_iconic_2100_sum_df, aes(x = x, y = y, fill = N)) +
+  geom_tile(data = baltic_iconic_2050_sum_df, aes(x = x, y = y, fill = N)) +
   scale_y_continuous(limits = c(53.5, 66), expand = c(0, 0)) +
   scale_x_continuous(limits = c(1, 29), expand = c(0, 0)) +
   scale_fill_viridis_c(option = "mako",
@@ -442,13 +437,22 @@ direction = 1,
   #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
   #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
   geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
-  labs(title = "Baltic Sea",
+  labs(title = "Baltic Sea - 2050",
        fill = "iconic species count", 
        x = "",
        y = "") +
   theme_void() +
   theme(legend.position = "bottom",
         plot.margin = margin(l = 5)) 
+```
+
+```{r}
+baltic_all <- baltic_exit + baltic_entry + baltic_current + baltic_2050 +
+  plot_layout(ncol = 2)
+```
+
+```{r}
+#ggsave(here("images/baltic_ico_spp_rcp45_2050_110626.png"), baltic_all, width = 8, height = 8, dpi = 600)
 ```
 
 ## British Columbia 
@@ -473,7 +477,6 @@ bc_ico_spp <- read_csv(here("data/ohibc_ico_spp_trend.csv"))
 
 ```{r}
 bc_ico_spp_clean <- bc_ico_spp %>% 
-  #mutate(scientific_name_clean = str_trim(str_remove(scientific_name, "\\(.*$")))
   mutate(sciname_clean = word(sciname, 1, 2))
 ```
 
@@ -486,7 +489,7 @@ bc_ico_spp_list <- tolower(unique(bc_ico_spp_clean$sciname_clean))
 ```{r}
 # Filter iucn lookup for iconic species - double check filtered to 39 instead of 42
 # No ammodytes hexapterus which is aphiaid 254510 (has SDM)
-# No haliotis kamtschatkana whihc is aphiaid 405014 (has SDM)
+# No haliotis kamtschatkana which is aphiaid 405014 (has SDM)
 # No canada goose
 bc_ico_lookup <- iucn_lookup %>% filter(iucn_sciname %in% bc_ico_spp_list)
 ```
@@ -537,10 +540,9 @@ bc_exit_rcp45_sum_df <- bc_exit_rcp45_df %>%
 ```
 
 ```{r}
-ggplot() +
+bc_exit <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
-  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = bc_region_wgs84, fill = NA) +
+  geom_sf(data = bc_region_wgs84, fill = "#f4f4f4", color = NA) +
   geom_tile(data = bc_exit_rcp45_sum_df, aes(x = x, y = y, fill = n_exit_pxls)) +
   scale_y_continuous(limits = c(46, 56), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-139, -122), expand = c(0, 0)) +
@@ -690,36 +692,35 @@ direction = 1,
 
 ```{r}
 system.time({
-  bc_spp_entry_pxl_rcp45_2100_count_df <- parallel::mclapply(bc_aquax_aphiaid, FUN = extract_all_entry_pixels_df_db, 
+  bc_spp_entry_pxl_rcp45_2050_count_df <- parallel::mclapply(bc_aquax_aphiaid, FUN = extract_all_entry_pixels_df_db, 
                                        df = df_bc, 
-                                       s = "RCP45_2100",
+                                       s = "RCP45_2050",
                                        mc.cores = 2)
 })
 ```
 
 
 ```{r}
-bc_entry_rcp45_2100_df <- bind_rows(bc_spp_entry_pxl_rcp45_2100_count_df) %>% 
+bc_entry_rcp45_2050_df <- bind_rows(bc_spp_entry_pxl_rcp45_2050_count_df) %>% 
   filter(entry == 1)
 ```
 
 ```{r}
 # Sum by XY cell, using collapse
 system.time({
-bc_entry_rcp45_2100_sum_df <- bc_entry_rcp45_2100_df %>% 
+bc_entry_rcp45_2050_sum_df <- bc_entry_rcp45_2050_df %>% 
   fgroup_by(x, y) %>% 
   fcount() %>% 
-  mutate(scenario = "RCP45_2100") %>% 
+  mutate(scenario = "RCP45_2050") %>% 
   rename(n_entry_pxls = N)
 })
 ```
 
 ```{r}
-ggplot() +
+bc_entry <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
-  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = bc_region_wgs84, fill = NA) +
-  geom_tile(data = bc_entry_rcp45_2100_sum_df, aes(x = x, y = y, fill = n_entry_pxls)) +
+  geom_sf(data = bc_region_wgs84, fill = "#f4f4f4", color = NA) +
+  geom_tile(data = bc_entry_rcp45_2050_sum_df, aes(x = x, y = y, fill = n_entry_pxls)) +
   scale_y_continuous(limits = c(46, 56), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-139, -122), expand = c(0, 0)) +
   scale_fill_viridis_c(option = "mako",
@@ -746,6 +747,7 @@ direction = 1,
   theme(legend.position = "bottom",
         plot.margin = margin(l = 5)) 
 ```
+
 ```{r}
 # Run BC current species (don't need parallel)
 system.time({
@@ -773,10 +775,10 @@ bc_iconic_current_sum_df <- bc_iconic_current_df %>%
 ```
 
 ```{r}
-ggplot() +
+bc_current <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = bc_region_wgs84, fill = NA) +
+  geom_sf(data = bc_region_wgs84, fill = "#f4f4f4", color = NA) +
   geom_tile(data = bc_iconic_current_sum_df, aes(x = x, y = y, fill = N)) +
   scale_y_continuous(limits = c(46, 56), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-139, -122), expand = c(0, 0)) +
@@ -805,18 +807,18 @@ direction = 1,
         plot.margin = margin(l = 5)) 
 ```
 ```{r}
-# Run BC 2100 species (don't need parallel)
+# Run BC 2050 species (don't need parallel)
 system.time({
-  bc_iconic_2100_list <- lapply(bc_aquax_aphiaid, 
+  bc_iconic_2050_list <- lapply(bc_aquax_aphiaid, 
                                        FUN = species_count, 
                                        df = df_bc, 
-                                       s = "RCP45_2100",
+                                       s = "RCP45_2050",
                                        n_threads = 1)
 })
 ```
 
 ```{r}
-bc_iconic_2100_df <- bind_rows(bc_iconic_2100_list) %>% 
+bc_iconic_2050_df <- bind_rows(bc_iconic_2050_list) %>% 
   # drop binary = 0 (no pixels above threshold)
   filter(binary == 1)
 ```
@@ -824,18 +826,18 @@ bc_iconic_2100_df <- bind_rows(bc_iconic_2100_list) %>%
 ```{r}
 # Sum by XY cell, using collapse (4 seconds)
 system.time({
-bc_iconic_2100_sum_df <- bc_iconic_2100_df %>% 
+bc_iconic_2050_sum_df <- bc_iconic_2050_df %>% 
   fgroup_by(x, y) %>% 
   fcount()
 })
 ```
 
 ```{r}
-ggplot() +
+bc_2050 <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = bc_region_wgs84, fill = NA) +
-  geom_tile(data = bc_iconic_2100_sum_df, aes(x = x, y = y, fill = N)) +
+  geom_sf(data = bc_region_wgs84, fill = "#f4f4f4", color = NA) +
+  geom_tile(data = bc_iconic_2050_sum_df, aes(x = x, y = y, fill = N)) +
   scale_y_continuous(limits = c(46, 56), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-139, -122), expand = c(0, 0)) +
   scale_fill_viridis_c(option = "mako",
@@ -854,7 +856,7 @@ direction = 1,
   #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
   geom_sf(data = bc_region_wgs84, fill = NA, color = "gray") +
   geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
-  labs(title = "British Columbia - 2100",
+  labs(title = "British Columbia - 2050",
        fill = "iconic species count", 
        x = "",
        y = "") +
@@ -863,10 +865,19 @@ direction = 1,
         plot.margin = margin(l = 5)) 
 ```
 
+```{r}
+bc_all <- bc_exit + bc_entry + bc_current + bc_2050 +
+  plot_layout(ncol = 2)
+```
+
+```{r}
+#ggsave(here("images/bc_ico_spp_rcp45_2050_110626.png"), bc_all, width = 8, height = 8, dpi = 600)
+```
+
 ## Northeast (Gulf of Maine)
 
 ```{r}
-# Reaad in iconic species data
+# Read in iconic species data
 ne_ico <- read_csv(here("data/iconic_species_ne_list.csv"))
 ```
 
@@ -950,10 +961,10 @@ ne_exit_rcp45_sum_df <- ne_exit_rcp45_df %>%
 ```
 
 ```{r}
-ggplot() +
+ne_exit <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_sf(data = ne_region_wgs84, fill = "#f4f4f4") +
   geom_tile(data = ne_exit_rcp45_sum_df, aes(x = x, y = y, fill = n_exit_pxls)) +
   scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
@@ -1008,10 +1019,10 @@ ne_entry_rcp45_sum_df <- ne_entry_rcp45_df %>%
 ```
 
 ```{r}
-ggplot() +
+ne_entry <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_sf(data = ne_region_wgs84, fill = "#f4f4f4") +
   geom_tile(data = ne_entry_rcp45_sum_df, aes(x = x, y = y, fill = n_entry_pxls)) +
   scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
@@ -1039,6 +1050,7 @@ direction = 1,
   theme(legend.position = "bottom",
         plot.margin = margin(l = 5)) 
 ```
+
 ```{r}
 # Run NE current species (don't need parallel)
 system.time({
@@ -1066,10 +1078,10 @@ ne_iconic_current_sum_df <- ne_iconic_current_df %>%
 ```
 
 ```{r}
-ggplot() +
+ne_current <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_sf(data = ne_region_wgs84, fill = "#f4f4f4") +
   geom_tile(data = ne_iconic_current_sum_df, aes(x = x, y = y, fill = N)) +
   scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
@@ -1099,7 +1111,7 @@ direction = 1,
 ```
 
 ```{r}
-# Run NE current species (don't need parallel)
+# Run NE 2050 species (don't need parallel)
 system.time({
   ne_iconic_rcp45_list <- lapply(ne_aquax_aphiaid, 
                                        FUN = species_count, 
@@ -1125,10 +1137,10 @@ ne_iconic_rcp45_sum_df <- ne_iconic_rcp45_df %>%
 ```
 
 ```{r}
-ggplot() +
+ne_2050 <- ggplot() +
   #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
   #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
-  geom_sf(data = ne_region_wgs84, fill = NA) +
+  geom_sf(data = ne_region_wgs84, fill = "#f4f4f4") +
   geom_tile(data = ne_iconic_rcp45_sum_df, aes(x = x, y = y, fill = N)) +
   scale_y_continuous(limits = c(37, 46), expand = c(0, 0)) +
   scale_x_continuous(limits = c(-77, -65), expand = c(0, 0)) +
@@ -1148,13 +1160,22 @@ direction = 1,
   #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
   geom_sf(data = ne_region_wgs84, fill = NA, color = "gray") +
   geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
-  labs(title = "Northeast (Gulf of Maine) - 2100",
+  labs(title = "Northeast (Gulf of Maine) - 2050",
        fill = "iconic species count", 
        x = "",
        y = "") +
   theme_void() +
   theme(legend.position = "bottom",
         plot.margin = margin(l = 5)) 
+```
+
+```{r}
+ne_all <- ne_exit + ne_entry + ne_current + ne_2050 +
+  plot_layout(ncol = 2)
+```
+
+```{r}
+#ggsave(here("images/ne_ico_spp_rcp45_2050_110626.png"), ne_all, width = 8, height = 8, dpi = 600)
 ```
 
 ## Gulf of California
