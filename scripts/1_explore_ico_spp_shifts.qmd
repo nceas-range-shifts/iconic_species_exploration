@@ -18,6 +18,7 @@ library(sf)
 library(terra)
 library(arrow)
 library(collapse)
+library(patchwork)
 ```
 
 ```{r}
@@ -1194,18 +1195,264 @@ goc_ico_lookup <- iucn_lookup %>% filter(iucn_sciname %in% goc_ico_spp_list)
 ```
 
 ```{r}
-ne_ico_lookup_aquax <- ne_ico_lookup %>% 
+goc_ico_lookup_aquax <- goc_ico_lookup %>% 
   filter(aquax == "SDM")
 
-ne_aquax_aphiaid <- ne_ico_lookup_aquax$aphia_id
+goc_aquax_aphiaid <- goc_ico_lookup_aquax$aphia_id
 
 # Add the two missing species from above (weren't in iucn lookup)
-ne_aquax_aphiaid <- c(ne_aquax_aphiaid, 156817, 107379)
+goc_aquax_aphiaid <- c(goc_aquax_aphiaid, 714777, 464493, 507084, 464505,
+                       # hammerheads
+                       105819, 105816,
+                       # rays
+                       1026118, 105859, 105858, 217430, 271482)
 ```
 
 ```{r}
-# Filter df for NE iconic species
-df_ne <- df  %>% 
-  filter(aphiaid %in% ne_aquax_aphiaid)
+# Filter df for GOC iconic species (the six birds drop out)
+df_goc <- df  %>% 
+  filter(aphiaid %in% goc_aquax_aphiaid)
 ```
 
+## Find species change
+ 
+```{r}
+system.time({
+  goc_spp_exit_pxl_count_df <- parallel::mclapply(goc_aquax_aphiaid, FUN = extract_all_exit_pixels_df_db, 
+                                       df = df_goc, 
+                                       s = "RCP45_2050",
+                                       mc.cores = 2)
+})
+```
+
+```{r}
+goc_exit_rcp45_df <- bind_rows(goc_spp_exit_pxl_count_df) %>% 
+  filter(exit == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse
+system.time({
+goc_exit_rcp45_sum_df <- goc_exit_rcp45_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount() %>% 
+  mutate(scenario = "RCP45_2050") %>% 
+  rename(n_exit_pxls = N)
+})
+```
+
+```{r}
+goc_exit <- ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = goc_region_wgs84, fill = NA) +
+  geom_tile(data = goc_exit_rcp45_sum_df, aes(x = x, y = y, fill = n_exit_pxls)) +
+  scale_y_continuous(limits = c(22, 32), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-117, -105), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "rocket",
+direction = 1,
+                      limits = c(1, 32),
+                      trans = "sqrt",
+                      breaks = c(1, 4, 8, 16, 32),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Gulf of California",
+       fill = "loss species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+
+```{r}
+system.time({
+  goc_spp_entry_pxl_count_df <- parallel::mclapply(goc_aquax_aphiaid, FUN = extract_all_entry_pixels_df_db, 
+                                       df = df_goc, 
+                                       s = "RCP45_2050",
+                                       mc.cores = 2)
+})
+```
+
+```{r}
+goc_entry_rcp45_df <- bind_rows(goc_spp_entry_pxl_count_df) %>% 
+  filter(entry == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse
+system.time({
+goc_entry_rcp45_sum_df <- goc_entry_rcp45_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount() %>% 
+  mutate(scenario = "RCP45_2050") %>% 
+  rename(n_entry_pxls = N)
+})
+```
+
+```{r}
+goc_entry <- ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = goc_region_wgs84, fill = NA) +
+  geom_tile(data = goc_entry_rcp45_sum_df, aes(x = x, y = y, fill = n_entry_pxls)) +
+  scale_y_continuous(limits = c(22, 32), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-117, -105), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "mako",
+direction = 1,
+                      limits = c(1, 32),
+                      trans = "sqrt",
+                      breaks = c(1, 4, 8, 16, 32),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Gulf of California",
+       fill = "entry species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+
+
+```{r}
+# Run GOC current species (don't need parallel)
+system.time({
+  goc_iconic_current_list <- lapply(goc_aquax_aphiaid, 
+                                       FUN = species_count, 
+                                       df = df_goc, 
+                                       s = "Current",
+                                       n_threads = 1)
+})
+```
+
+```{r}
+goc_iconic_current_df <- bind_rows(goc_iconic_current_list) %>% 
+  # drop binary = 0 (no pixels above threshold)
+  filter(binary == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse (4 seconds)
+system.time({
+goc_iconic_current_sum_df <- goc_iconic_current_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount()
+})
+```
+
+```{r}
+goc_current <- ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = goc_region_wgs84, fill = NA) +
+  geom_tile(data = goc_iconic_current_sum_df, aes(x = x, y = y, fill = N)) +
+  scale_y_continuous(limits = c(22, 32), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-117, -105), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "mako",
+direction = 1,
+                      limits = c(1, 32),
+                      trans = "sqrt",
+                      breaks = c(1, 4, 8, 16, 32),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Gulf of California - current",
+       fill = "iconic species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+
+```{r}
+# Run GOC current species (don't need parallel)
+system.time({
+  goc_iconic_2050_list <- lapply(goc_aquax_aphiaid, 
+                                       FUN = species_count, 
+                                       df = df_goc, 
+                                       s = "RCP45_2050",
+                                       n_threads = 1)
+})
+```
+
+```{r}
+goc_iconic_2050_df <- bind_rows(goc_iconic_2050_list) %>% 
+  # drop binary = 0 (no pixels above threshold)
+  filter(binary == 1)
+```
+
+```{r}
+# Sum by XY cell, using collapse (4 seconds)
+system.time({
+goc_iconic_2050_sum_df <- goc_iconic_2050_df %>% 
+  fgroup_by(x, y) %>% 
+  fcount()
+})
+```
+
+```{r}
+goc_2050 <- ggplot() +
+  #geom_sf(data = eez_simple_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = eez_contested_sf, fill = "#f4f4f4", color = NA) +
+  #geom_sf(data = goc_region_wgs84, fill = NA) +
+  geom_tile(data = goc_iconic_2050_sum_df, aes(x = x, y = y, fill = N)) +
+  scale_y_continuous(limits = c(22, 32), expand = c(0, 0)) +
+  scale_x_continuous(limits = c(-117, -105), expand = c(0, 0)) +
+  scale_fill_viridis_c(option = "mako",
+direction = 1,
+                      limits = c(1, 32),
+                      trans = "sqrt",
+                      breaks = c(1, 4, 8, 16, 32),
+                      guide = guide_colorbar(
+                      #barwidth  = unit(5, "cm"),   # wide bar for bottom placement
+                      #barheight = unit(0.4, "cm"),
+                      ticks = TRUE,
+                      ticks.colour = "white",
+                      ticks.linewidth = 0.8
+  )) +
+  #geom_sf(data = eez_simple_sf, color = "gray", size = 0.2, fill = "NA") +
+  #geom_sf(data = eez_contested_sf, color = "red", size = 0.2, fill = "NA") +
+  geom_sf(data = globe, fill = "cornsilk2", size = 0.1, color = "black")+
+  labs(title = "Gulf of California - 2050",
+       fill = "iconic species count", 
+       x = "",
+       y = "") +
+  theme_void() +
+  theme(legend.position = "bottom",
+        plot.margin = margin(l = 5)) 
+```
+
+```{r}
+goc_all <- goc_exit + goc_entry + goc_current + goc_2050 +
+  #plot_annotation(title = "Species entry hotspots, SSP2-4.5 2050") +
+  plot_layout(ncol = 2)
+```
+
+```{r}
+#ggsave(here("images/goc_ico_spp_rcp45_2050_110626.png"), goc_all, width = 8, height = 8, dpi = 600)
+```
