@@ -98,7 +98,7 @@ get_hsi <- function(id, df, scenario, n_threads = 1) {
   # Cap threads so that function doesn't overscribe and hang
   DBI::dbExecute(con, paste0("PRAGMA threads = ", n_threads, ";"))
 
-  query_str <- paste0("SELECT ROUND(x, 3) AS x, ROUND(y, 3) AS y, ROUND(Current, 3) AS Current", paste(scenario, collapse = ", "), 
+  query_str <- paste0("SELECT ROUND(Cutoff, 3) AS Cutoff,", paste(scenario, collapse = ", "), 
     " FROM read_parquet('", spp_filter$f, "')")
 
  # Run query and filter for scenario pixels above cutoff threshold
@@ -120,18 +120,14 @@ get_hsi <- function(id, df, scenario, n_threads = 1) {
 }}
 ```
 
-
 ```{r}
-hsi_test <- get_hsi(aphiaid_100, df, scenario = "Current")
+hsi_test <- lapply(aphiaid_100, FUN = get_hsi, df = test_spp_100, scenario = "Current")
 ```
 
-
 ```{r}
-hsi_df_clean <- hsi_test %>% 
-    filter(CurrentCurrent > 0) %>% 
-    rename(Current = CurrentCurrent)
+hsi_df_clean <- bind_rows(hsi_test) %>% 
+    filter(round(Current, 3) > 0) 
 ```
-
 
 ```{r}
 ggplot() +
@@ -152,14 +148,12 @@ coastal_aphiaid_100 <- coastal_spp_100$aphiaid
 ```
 
 ```{r}
-coastal_hsi_test <- get_hsi(coastal_aphiaid_100, df_coastal, scenario = "Current")
+coastal_hsi_test <- lapply(coastal_aphiaid_100, FUN = get_hsi, df = coastal_spp_100, scenario = "Current")
 ```
 
-
 ```{r}
-coastal_hsi_df_clean <- coastal_hsi_test %>% 
-    filter(CurrentCurrent > 0) %>% 
-    rename(Current = CurrentCurrent)
+coastal_hsi_df_clean <- bind_rows(coastal_hsi_test) %>% 
+    filter(round(Current, 3) > 0) 
 ```
 
 
@@ -174,28 +168,32 @@ ggplot() +
 
 
 ```{r}
-set.seed(42)
+set.seed(123)
 noncoastal_spp_100 <- slice_sample(df_noncoastal, n = 100)
 noncoastal_files_100 <- noncoastal_spp_100$f
 noncoastal_aphiaid_100 <- noncoastal_spp_100$aphiaid
 ```
 
 ```{r}
-noncoastal_hsi_test <- get_hsi(noncoastal_aphiaid_100, df_noncoastal, scenario = "Current")
+noncoastal_hsi_test <- lapply(noncoastal_aphiaid_100, FUN = get_hsi, df = noncoastal_spp_100, scenario = "Current")
 ```
 
 
 ```{r}
-noncoastal_hsi_df_clean <- noncoastal_hsi_test %>% 
-    filter(CurrentCurrent > 0) %>% 
-    rename(Current = CurrentCurrent)
+noncoastal_hsi_df_clean <- bind_rows(noncoastal_hsi_test) %>% 
+    filter(round(Current, 3) > 0) 
 ```
 
 
 ```{r}
 ggplot() +
-    geom_histogram(data = noncoastal_hsi_df_clean, aes(x = Current), bins = 25) +
-    labs(title = "Non-Coastal Distribution of Habitat Suitability Index (HSI): 1 to 1000",
+    geom_histogram(data = noncoastal_hsi_df_clean, aes(x = Current), bins = 30, fill = "aquamarine", alpha = 0.7) +
+    geom_histogram(data = coastal_hsi_df_clean, aes(x = Current), bins = 30, fill = "coral", alpha = 0.7) +
+    geom_vline(xintercept = mean(coastal_hsi_df_clean$Cutoff), linetype = "dashed", color = "coral") +
+    geom_vline(xintercept = mean(coastal_hsi_df_clean$Current), color = "coral") +
+    geom_vline(xintercept = mean(noncoastal_hsi_df_clean$Current), color = "aquamarine") +
+    geom_vline(xintercept = mean(noncoastal_hsi_df_clean$Cutoff), linetype = "dashed", color = "aquamarine") +
+    labs(title = "Distribution of Habitat Suitability Index (HSI): 1 to 1000",
          x = "Habitat Suitability Index (HSI)",
          y = "Count of Pixels") +
     theme_minimal()
