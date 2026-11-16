@@ -1,0 +1,202 @@
+---
+title: "Aquax - HSI distributions"
+author: "Laurel Abowd"
+format: 
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+execute:
+    message: false
+    warning: false
+---
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(sf)
+library(terra)
+library(arrow)
+library(collapse)
+```
+
+This document looks at the distribution of Habitat Suitability Index (HSI) for a sample of AquaX species.
+
+```{r}
+# Load functions for processing AquaX data
+source(here( "common_fxns.R"))
+```
+
+## Prep AquaX data
+We'll be working with a sample of species
+
+```{r}
+# read in meta data on the aquax species
+load("/home/shares/data-aquax/META_02122025.Rdata")
+```
+
+```{r}
+meta_clean <- META %>% 
+  mutate(worms_name = tolower(ScientificName)) %>% 
+  select(!ScientificName) %>% 
+  # simplify for now for easier viewing
+  select(AphiaID, SPID, worms_name, GROUP, NR_CR, range_pixels, SDM)
+```
+
+```{r}
+spp_fs <- list.files('/home/shares/data-aquax/SDM',
+                     full.names = TRUE)
+
+df <- data.frame(f = spp_fs) %>%
+    mutate(fsize = file.size(f),
+           aphiaid = str_extract(basename(f), '[0-9]+') %>% as.integer()) %>%
+    left_join(META, by = c('aphiaid' = 'AphiaID'))
+```
+
+```{r}
+df_coastal <- df %>% 
+    filter(Coastal == 1)
+
+aphiaid_coastal <- df_coastal$aphiaid
+
+df_noncoastal <- df %>% 
+    filter(!aphiaid %in% aphiaid_coastal)
+```
+
+```{r}
+test_f <- read_parquet("/home/shares/data-aquax/SDM/FINAL_EMSDM_EMMEAN_SP_1017389.parquet")
+```
+
+## Find pixel by pixel new and lost species within EEZs
+Here, output is pixel by pixel. A species can be new or lost to a pixel even if it already present/absent in that EEZ.
+
+# Test - all species 
+
+```{r}
+set.seed(123)
+test_spp_100 <- slice_sample(df, n = 100)
+files_100 <- test_spp_100$f
+aphiaid_100 <- test_spp_100$aphiaid
+```
+
+```{r}
+get_hsi <- function(id, df, scenario, n_threads = 1) {
+    spp_filter <- df %>% filter(aphiaid == id)
+  
+  if (nrow(spp_filter) == 0) {
+    warning("No rows found for aphiaid: ", id)
+    return(NULL)
+  }
+
+  # Create database connection
+  con <- DBI::dbConnect(duckdb::duckdb())
+
+  # Ensure connection is closed 
+  on.exit(DBI::dbDisconnect(con, shutdown = TRUE), add = TRUE)
+
+  # Cap threads so that function doesn't overscribe and hang
+  DBI::dbExecute(con, paste0("PRAGMA threads = ", n_threads, ";"))
+
+  query_str <- paste0("SELECT ROUND(x, 3) AS x, ROUND(y, 3) AS y, ROUND(Current, 3) AS Current", paste(scenario, collapse = ", "), 
+    " FROM read_parquet('", spp_filter$f, "')")
+
+ # Run query and filter for scenario pixels above cutoff threshold
+
+    spp_df <- DBI::dbGetQuery(con, query_str) 
+
+  # Set option for if there are no pixels above the cutoff threshold
+    if (nrow(spp_df) == 0) {
+        warning("No pixels above cutoff threshold for aphiaid: ", id)
+      # Return 0 to track loss species
+        return(data.frame(x = NA, y = NA, binary = 0, s = scenario))
+    } else {
+  
+  # Return the pixels above the cutoff to be summarized into LC count  
+  spp_df_clean <- spp_df %>% 
+    mutate(s = scenario)
+
+  return(spp_df_clean)
+}}
+```
+
+
+```{r}
+hsi_test <- get_hsi(aphiaid_100, df, scenario = "Current")
+```
+
+
+```{r}
+hsi_df_clean <- hsi_test %>% 
+    filter(CurrentCurrent > 0) %>% 
+    rename(Current = CurrentCurrent)
+```
+
+
+```{r}
+ggplot() +
+    geom_histogram(data = hsi_df_clean, aes(x = Current), bins = 25) +
+    labs(title = "Distribution of Habitat Suitability Index (HSI): 1 to 1000",
+         x = "Habitat Suitability Index (HSI)",
+         y = "Count of Pixels") +
+    theme_minimal()
+```
+
+## Get a sample from coastal species 
+
+```{r}
+set.seed(123)
+coastal_spp_100 <- slice_sample(df_coastal, n = 100)
+coastal_files_100 <- coastal_spp_100$f
+coastal_aphiaid_100 <- coastal_spp_100$aphiaid
+```
+
+```{r}
+coastal_hsi_test <- get_hsi(coastal_aphiaid_100, df_coastal, scenario = "Current")
+```
+
+
+```{r}
+coastal_hsi_df_clean <- coastal_hsi_test %>% 
+    filter(CurrentCurrent > 0) %>% 
+    rename(Current = CurrentCurrent)
+```
+
+
+```{r}
+ggplot() +
+    geom_histogram(data = coastal_hsi_df_clean, aes(x = Current), bins = 25) +
+    labs(title = "Coastal Distribution of Habitat Suitability Index (HSI): 1 to 1000",
+         x = "Habitat Suitability Index (HSI)",
+         y = "Count of Pixels") +
+    theme_minimal()
+```
+
+
+```{r}
+set.seed(42)
+noncoastal_spp_100 <- slice_sample(df_noncoastal, n = 100)
+noncoastal_files_100 <- noncoastal_spp_100$f
+noncoastal_aphiaid_100 <- noncoastal_spp_100$aphiaid
+```
+
+```{r}
+noncoastal_hsi_test <- get_hsi(noncoastal_aphiaid_100, df_noncoastal, scenario = "Current")
+```
+
+
+```{r}
+noncoastal_hsi_df_clean <- noncoastal_hsi_test %>% 
+    filter(CurrentCurrent > 0) %>% 
+    rename(Current = CurrentCurrent)
+```
+
+
+```{r}
+ggplot() +
+    geom_histogram(data = noncoastal_hsi_df_clean, aes(x = Current), bins = 25) +
+    labs(title = "Non-Coastal Distribution of Habitat Suitability Index (HSI): 1 to 1000",
+         x = "Habitat Suitability Index (HSI)",
+         y = "Count of Pixels") +
+    theme_minimal()
+```
