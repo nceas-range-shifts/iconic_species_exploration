@@ -65,11 +65,31 @@ df_noncoastal <- df %>%
 ```
 
 ```{r}
+df_neritic_benthic <- df %>% 
+    filter(Neritic == 1 & Benthic == 1)
+
+
+df_coastal_oceanic <- df %>% 
+    filter(Coastal == 1 & Oceanic == 1)
+
+df_coastal_only <- df %>% 
+    filter(Coastal == 1 & Oceanic == 0)
+
+df_oceanic_only <- df %>% 
+    filter(Coastal == 0 & Oceanic == 1)
+
+df_oceanic <- df %>% 
+    filter(Oceanic == 1)
+```
+
+For coastal vs oceanic will do specieis that are only coastal vs a more inclusive oceanic group that may also include coastal species.
+
+```{r}
 test_f <- read_parquet("/home/shares/data-aquax/SDM/FINAL_EMSDM_EMMEAN_SP_1017389.parquet")
 ```
 
-## Find pixel by pixel new and lost species within EEZs
-Here, output is pixel by pixel. A species can be new or lost to a pixel even if it already present/absent in that EEZ.
+## Find distribution of Habitat Suitability Index (HSI) for a sample of species
+Here, output is pixel by pixel. Starting with Current timep period.
 
 # Test - all species 
 
@@ -139,10 +159,11 @@ ggplot() +
 ```
 
 ## Get a sample from coastal species 
+For the coastal set only include species that are flagged as coastal (1) and not as oceanic (0)
 
 ```{r}
 set.seed(123)
-coastal_spp_100 <- slice_sample(df_coastal, n = 100)
+coastal_spp_100 <- slice_sample(df_coastal_only, n = 100)
 coastal_files_100 <- coastal_spp_100$f
 coastal_aphiaid_100 <- coastal_spp_100$aphiaid
 ```
@@ -169,7 +190,8 @@ ggplot() +
 
 ```{r}
 set.seed(123)
-noncoastal_spp_100 <- slice_sample(df_noncoastal, n = 100)
+#noncoastal_spp_100 <- slice_sample(df_noncoastal, n = 100)
+noncoastal_spp_100 <- slice_sample(df_oceanic, n = 100)
 noncoastal_files_100 <- noncoastal_spp_100$f
 noncoastal_aphiaid_100 <- noncoastal_spp_100$aphiaid
 ```
@@ -186,15 +208,62 @@ noncoastal_hsi_df_clean <- bind_rows(noncoastal_hsi_test) %>%
 
 
 ```{r}
-ggplot() +
-    geom_histogram(data = noncoastal_hsi_df_clean, aes(x = Current), bins = 30, fill = "aquamarine", alpha = 0.7) +
-    geom_histogram(data = coastal_hsi_df_clean, aes(x = Current), bins = 30, fill = "coral", alpha = 0.7) +
+hsi_current_hist <- ggplot() +
+    geom_histogram(data = noncoastal_hsi_df_clean, aes(x = Current, fill = "Oceanic"), bins = 30, alpha = 0.7) +
+    geom_histogram(data = coastal_hsi_df_clean, aes(x = Current, fill = "Coastal"), bins = 30, alpha = 0.7) +
     geom_vline(xintercept = mean(coastal_hsi_df_clean$Cutoff), linetype = "dashed", color = "coral") +
     geom_vline(xintercept = mean(coastal_hsi_df_clean$Current), color = "coral") +
     geom_vline(xintercept = mean(noncoastal_hsi_df_clean$Current), color = "aquamarine") +
     geom_vline(xintercept = mean(noncoastal_hsi_df_clean$Cutoff), linetype = "dashed", color = "aquamarine") +
+    scale_y_continuous(limits = c(0, 40000000)) +
+    scale_fill_manual(name = NULL, values = c("Oceanic" = "aquamarine", "Coastal" = "coral")) +
     labs(title = "Distribution of Habitat Suitability Index (HSI): 1 to 1000",
+        subtitle = "Current",
          x = "Habitat Suitability Index (HSI)",
          y = "Count of Pixels") +
     theme_minimal()
+```
+
+## RCP 4.5 2050
+
+```{r}
+rcp_45_2050_coastal_hsi_test <- lapply(coastal_aphiaid_100, FUN = get_hsi, df = coastal_spp_100, scenario = "RCP45_2050")
+```
+
+```{r}
+rcp_45_2050_coastal_hsi_df_clean <- bind_rows(rcp_45_2050_coastal_hsi_test) %>% 
+    filter(round(RCP45_2050, 3) > 0) 
+```
+
+```{r}
+rcp_45_2050_noncoastal_hsi_test <- lapply(noncoastal_aphiaid_100, FUN = get_hsi, df = noncoastal_spp_100, scenario = "RCP45_2050")
+```
+
+```{r}
+rcp_45_2050_noncoastal_hsi_df_clean <- bind_rows(rcp_45_2050_noncoastal_hsi_test) %>% 
+    filter(round(RCP45_2050, 3) > 0) 
+```
+
+```{r}
+hsi_future_hist <- ggplot() +
+    geom_histogram(data = rcp_45_2050_noncoastal_hsi_df_clean, aes(x = RCP45_2050, fill = "Oceanic"), bins = 30, alpha = 0.7) +
+    geom_histogram(data = rcp_45_2050_coastal_hsi_df_clean, aes(x = RCP45_2050, fill = "Coastal"), bins = 30, alpha = 0.7) +
+    geom_vline(xintercept = mean(rcp_45_2050_coastal_hsi_df_clean$Cutoff), linetype = "dashed", color = "coral") +
+    geom_vline(xintercept = mean(rcp_45_2050_coastal_hsi_df_clean$RCP45_2050), color = "coral") +
+    geom_vline(xintercept = mean(rcp_45_2050_noncoastal_hsi_df_clean$RCP45_2050), color = "aquamarine") +
+    geom_vline(xintercept = mean(rcp_45_2050_noncoastal_hsi_df_clean$Cutoff), linetype = "dashed", color = "aquamarine") +
+    scale_y_continuous(limits = c(0, 40000000)) +
+    scale_fill_manual(name = NULL, values = c("Oceanic" = "aquamarine", "Coastal" = "coral")) +
+    labs(title = "Distribution of Habitat Suitability Index (HSI): 1 to 1000",
+         subtitle = "RCP 4.5 2050",
+         x = "Habitat Suitability Index (HSI)",
+         y = "Count of Pixels") +
+    theme_minimal()
+```
+
+## Save plots
+
+```{r}
+ggsave(here("images/hsi_rcp45_2050_111726.png"), hsi_future_hist, width = 7, height = 5, dpi = 300)
+ggsave(here("images/hsi_current_2050_111726.png"), hsi_current_hist, width = 7, height = 5, dpi = 300)
 ```
